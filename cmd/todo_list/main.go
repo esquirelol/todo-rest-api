@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/esquirelol/todo-rest-api/internal/config"
 	"github.com/esquirelol/todo-rest-api/internal/logger"
 	"github.com/esquirelol/todo-rest-api/internal/storage"
+	"github.com/esquirelol/todo-rest-api/internal/todo"
 	"go.uber.org/zap"
 )
 
@@ -16,5 +18,9 @@ func main() {
 	log.Info("logger init", zap.String("env", cfg.Env))
 	db := storage.ConnectionStorage(ctx, cfg.Storage, log)
 	log.Info("successful connection to the storage")
-	_ = db
+	n := todo.Todo{
+		Author: "abobus",
+		Title:  "1",
+	}
+
 }
