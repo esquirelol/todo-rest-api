@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/esquirelol/todo-rest-api/internal/http/api/requests"
 	"github.com/esquirelol/todo-rest-api/internal/todo"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
@@ -40,12 +41,12 @@ func ConnectionStorage(ctx context.Context, storagePath string, logger *zap.Logg
 	return storage
 }
 
-func (st *Storage) Create(ctx context.Context, todo *todo.Todo) error {
+func (st *Storage) Create(ctx context.Context, todo requests.RequestCreate) error {
 	sqlQuery := `
-		INSERT INTO tasks(author,title,description,completed_at)
+		INSERT INTO tasks(author,title,description)
 		VALUES($1,$2,$3,$4);
 `
-	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title, todo.Description, todo.Completed_at); err != nil {
+	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title, todo.Description); err != nil {
 		st.logger.Error("storage: failed to create")
 		return err
 	}
@@ -53,61 +54,65 @@ func (st *Storage) Create(ctx context.Context, todo *todo.Todo) error {
 	return nil
 }
 
-func (st *Storage) Get(ctx context.Context, task *todo.Todo) (*todo.Todo, error) {
+func (st *Storage) Get(ctx context.Context, author string) (todo.Todo, error) {
 	sqlQuery := `
-	SELECT title,description,status,created_at FROM tasks
-	WHERE author = $1 and title = $2
+	SELECT author,title,description,status,created_at,completed_at FROM tasks
+	WHERE author = $1
 	LIMIT 1;
 `
 	var outTask todo.Todo
-	err := st.conn.QueryRow(ctx, sqlQuery, task.Author, task.Title).Scan(
+	err := st.conn.QueryRow(ctx, sqlQuery, author).Scan(
+		&outTask.Author,
 		&outTask.Title,
 		&outTask.Description,
 		&outTask.Status,
-		&outTask.Created_at)
+		&outTask.CreatedAt,
+		&outTask.CompletedAt,
+	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			st.logger.Info("storage: dont found this task")
-			return nil, err
+			return todo.Todo{}, ErrTaskNotFound
 		}
 		st.logger.Error("storage:", zap.Error(err))
-		return nil, err
+		return todo.Todo{}, err
 	}
 	st.logger.Info("storage: get success")
-	return &outTask, nil
+	return outTask, nil
 }
 
-func (st *Storage) Done(ctx context.Context, todo *todo.Todo) error {
+func (st *Storage) Done(ctx context.Context, title string) error {
 	sqlQuery := `
-	UPDATE tasks SET status = true
-	WHERE author = $1 and title = $2;
+	UPDATE tasks SET status = true,completed_at = now()
+	WHERE title = $1
 `
-	cmdTag, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title)
+	res, err := st.conn.Exec(ctx, sqlQuery, title)
 	if err != nil {
+
 		st.logger.Error("storage: failed to update")
 		return err
 	}
-
-	if cmdTag.RowsAffected() == 0 {
-		st.logger.Info("dont found this task")
+	if res.RowsAffected() == 0 {
+		st.logger.Info("task not found")
+		return ErrTaskNotFound
 	}
-
 	st.logger.Info("done task success")
 	return nil
 }
 
-func (st *Storage) Delete(ctx context.Context, todo *todo.Todo) error {
+func (st *Storage) Delete(ctx context.Context, title string) error {
 	sqlQuery := `
 	DELETE FROM tasks
-	WHERE author = $1 and title = $2;
+	WHERE title = $1;
 `
-	cmdTag, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title)
+	res, err := st.conn.Exec(ctx, sqlQuery, title)
 	if err != nil {
 		st.logger.Error("storage: failed to delete")
 		return err
 	}
-	if cmdTag.RowsAffected() == 0 {
-		st.logger.Info("dont delete")
+	if res.RowsAffected() == 0 {
+		st.logger.Info("task not found")
+		return ErrTaskNotFound
 	}
 
 	st.logger.Info("delete task success")
