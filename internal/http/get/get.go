@@ -6,20 +6,20 @@ import (
 	"net/http"
 
 	"github.com/esquirelol/todo-rest-api/internal/http/api/response"
+	"github.com/esquirelol/todo-rest-api/internal/models"
 	"github.com/esquirelol/todo-rest-api/internal/storage"
-	"github.com/esquirelol/todo-rest-api/internal/todo"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/render"
 	"go.uber.org/zap"
 )
 
 type TaskGet interface {
-	Get(ctx context.Context, author string) (todo.Todo, error)
+	Get(ctx context.Context, author string) ([]models.ModelTodo, error)
 }
 
 func New(taskGet TaskGet, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var outTask todo.Todo
+		var outTask []models.ModelTodo
 		author := chi.URLParam(r, "author")
 
 		outTask, err := taskGet.Get(r.Context(), author)

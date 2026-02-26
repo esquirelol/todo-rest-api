@@ -4,19 +4,20 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/esquirelol/todo-rest-api/internal/http/api/requests"
+	"github.com/esquirelol/todo-rest-api/internal/dto"
+
 	"github.com/esquirelol/todo-rest-api/internal/http/api/response"
 	"github.com/go-chi/render"
 	"go.uber.org/zap"
 )
 
 type TaskCreate interface {
-	Create(ctx context.Context, todo requests.RequestCreate) error
+	Create(ctx context.Context, todo dto.Todo) error
 }
 
 func New(taskCr TaskCreate, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var task requests.RequestCreate
+		var task dto.Todo
 		if err := render.DecodeJSON(r.Body, &task); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			logger.Error("failed to create task")

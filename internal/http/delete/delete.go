@@ -13,14 +13,14 @@ import (
 )
 
 type TaskDelete interface {
-	Delete(ctx context.Context, title string) error
+	Delete(ctx context.Context, idTask string) error
 }
 
 func New(taskDelete TaskDelete, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		title := chi.URLParam(r, "title")
+		idTask := chi.URLParam(r, "id")
 
-		if err := taskDelete.Delete(r.Context(), title); err != nil {
+		if err := taskDelete.Delete(r.Context(), idTask); err != nil {
 			if errors.Is(err, storage.ErrTaskNotFound) {
 				logger.Info("http/delete: task not found")
 				w.WriteHeader(http.StatusNotFound)
@@ -32,7 +32,7 @@ func New(taskDelete TaskDelete, logger *zap.Logger) http.HandlerFunc {
 			render.JSON(w, r, response.Error("internal server error"))
 			return
 		}
-		logger.Info("task is delete", zap.String("title", title))
+		logger.Info("task is delete", zap.String("id", idTask))
 		render.JSON(w, r, response.OK("task is delete"))
 	}
 }
