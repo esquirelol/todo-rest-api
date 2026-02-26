@@ -3,9 +3,10 @@ package storage
 import (
 	"context"
 	"errors"
+	"strconv"
 
-	"github.com/esquirelol/todo-rest-api/internal/http/api/requests"
-	"github.com/esquirelol/todo-rest-api/internal/todo"
+	"github.com/esquirelol/todo-rest-api/internal/dto"
+	"github.com/esquirelol/todo-rest-api/internal/models"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -15,106 +16,158 @@ type Storage struct {
 	logger *zap.Logger
 }
 
-func ConnectionStorage(ctx context.Context, storagePath string, logger *zap.Logger) *Storage {
-	conn, err := pgx.Connect(ctx, storagePath)
+func ConnectionStorage(ctx context.Context, pathStorage string, logger *zap.Logger) (Storage, error) {
+	conn, err := pgx.Connect(ctx, pathStorage)
 	if err != nil {
-		logger.Error("storage: failed to connection")
+		logger.Error("failed to connect storage", zap.Error(err))
+		return Storage{}, err
 	}
-
-	sqlQuery := `
-	CREATE TABLE IF NOT EXISTS tasks(
-	    id SERIAL PRIMARY KEY,
-	    author TEXT NOT NULL,
-	    title TEXT NOT NULL,
-	    description TEXT,
-	    status BOOLEAN DEFAULT false,
-	    created_at TIMESTAMP DEFAULT now(),
-	    completed_at TIMESTAMP
-	);
-`
-
-	if _, err := conn.Exec(ctx, sqlQuery); err != nil {
-		logger.Error("storage: failed to create table")
-	}
-
-	storage := &Storage{conn, logger}
-	return storage
+	storage := Storage{conn, logger}
+	return storage, nil
 }
 
-func (st *Storage) Create(ctx context.Context, todo requests.RequestCreate) error {
+func (st *Storage) Create(ctx context.Context, todo dto.Todo) error {
 	sqlQuery := `
-		INSERT INTO tasks(author,title,description)
-		VALUES($1,$2,$3,$4);
+	INSERT INTO tasks("author","title","description")
+	VALUES ($1,$2,$3);
 `
 	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title, todo.Description); err != nil {
-		st.logger.Error("storage: failed to create")
+		st.logger.Error("failed to create task", zap.Error(err))
 		return err
 	}
-	st.logger.Info("todo created")
+	st.logger.Info("created task success", zap.String("author:", todo.Author))
 	return nil
 }
 
-func (st *Storage) Get(ctx context.Context, author string) (todo.Todo, error) {
+func (st *Storage) Get(ctx context.Context, author string) ([]models.ModelTodo, error) {
+
+	storageTask := make([]models.ModelTodo, 0)
 	sqlQuery := `
 	SELECT author,title,description,status,created_at,completed_at FROM tasks
-	WHERE author = $1
-	LIMIT 1;
+	WHERE author = $1;
 `
-	var outTask todo.Todo
-	err := st.conn.QueryRow(ctx, sqlQuery, author).Scan(
+	rows, err := st.conn.Query(ctx, sqlQuery, author)
+	if err != nil {
+		st.logger.Error("failed to select task", zap.Error(err))
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var outTask models.ModelTodo
+		if err := rows.Scan(&outTask.Author,
+			&outTask.Title,
+			&outTask.Description,
+			&outTask.Status,
+			&outTask.CreatedAt,
+			&outTask.CompletedAt,
+		); err != nil {
+			st.logger.Error("failed to scan data", zap.Error(err))
+			return nil, err
+		}
+		storageTask = append(storageTask, outTask)
+	}
+
+	if len(storageTask) == 0 {
+		st.logger.Info("task not exists")
+		return nil, ErrNotExists
+	}
+
+	st.logger.Info("get success")
+	return storageTask, nil
+}
+
+func (st *Storage) GetId(ctx context.Context, idTask string) (models.ModelTodo, error) {
+	outTask := models.ModelTodo{}
+	idTaskInt, err := strconv.Atoi(idTask)
+	if err != nil {
+		st.logger.Error("failed to conv id", zap.Error(err))
+		return outTask, err
+	}
+	sqlQuery := `
+	SELECT author,title,description,status FROM tasks
+	WHERE id = $1
+`
+	if err := st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(
 		&outTask.Author,
 		&outTask.Title,
 		&outTask.Description,
 		&outTask.Status,
-		&outTask.CreatedAt,
-		&outTask.CompletedAt,
-	)
-	if err != nil {
+	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			st.logger.Info("storage: dont found this task")
-			return todo.Todo{}, ErrTaskNotFound
+			return outTask, ErrNotExists
 		}
-		st.logger.Error("storage:", zap.Error(err))
-		return todo.Todo{}, err
+		return outTask, err
 	}
-	st.logger.Info("storage: get success")
 	return outTask, nil
 }
 
-func (st *Storage) Done(ctx context.Context, title string) error {
-	sqlQuery := `
-	UPDATE tasks SET status = true,completed_at = now()
-	WHERE title = $1
-`
-	res, err := st.conn.Exec(ctx, sqlQuery, title)
-	if err != nil {
+func (st *Storage) Update(ctx context.Context, todo dto.TodoUpdate, idTask string) error {
+	task, err := st.GetId(ctx, idTask)
 
-		st.logger.Error("storage: failed to update")
+	if err != nil {
+		if errors.Is(err, ErrNotExists) {
+			st.logger.Info("task is not exists", zap.String("id_task:", idTask))
+			return ErrNotExists
+		}
+		st.logger.Error("failed to get task", zap.Error(err))
+	}
+	idTaskInt, err := strconv.Atoi(idTask)
+	if err != nil {
+		st.logger.Error("failed to conv id", zap.Error(err))
+		return err
+	}
+	author := task.Author
+	if todo.Author != nil {
+		author = *todo.Author
+	}
+	title := task.Title
+	if todo.Title != nil {
+		title = *todo.Title
+	}
+	description := task.Description
+	if todo.Description != nil {
+		description = *todo.Description
+	}
+	status := task.Status
+	if todo.Status != nil {
+		status = *todo.Status
+	}
+	sqlQuery := `
+	UPDATE tasks SET author = $1,title = $2, description = $3,status = $4
+	WHERE id = $5;
+`
+	res, err := st.conn.Exec(ctx, sqlQuery, author, title, description, status, idTaskInt)
+	if err != nil {
+		st.logger.Error("failed to update task", zap.Error(err))
 		return err
 	}
 	if res.RowsAffected() == 0 {
-		st.logger.Info("task not found")
-		return ErrTaskNotFound
+		st.logger.Info("task is not exists", zap.String("id", idTask))
+		return ErrNotExists
 	}
-	st.logger.Info("done task success")
+	st.logger.Info("task update success")
 	return nil
 }
 
-func (st *Storage) Delete(ctx context.Context, title string) error {
+func (st *Storage) Delete(ctx context.Context, idTask string) error {
+	idTaskInt, err := strconv.Atoi(idTask)
+	if err != nil {
+		st.logger.Error("failed to conv id", zap.Error(err))
+		return err
+	}
 	sqlQuery := `
 	DELETE FROM tasks
-	WHERE title = $1;
+	WHERE id = $1;
 `
-	res, err := st.conn.Exec(ctx, sqlQuery, title)
+	res, err := st.conn.Exec(ctx, sqlQuery, idTaskInt)
 	if err != nil {
-		st.logger.Error("storage: failed to delete")
+		st.logger.Error("failed to delete task", zap.String("id", idTask), zap.Error(err))
 		return err
 	}
 	if res.RowsAffected() == 0 {
-		st.logger.Info("task not found")
-		return ErrTaskNotFound
+		st.logger.Info("task is not exists", zap.String("id", idTask))
+		return ErrNotExists
 	}
-
-	st.logger.Info("delete task success")
+	st.logger.Info("task is deleted")
 	return nil
 }
