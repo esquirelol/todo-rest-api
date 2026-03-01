@@ -43,7 +43,7 @@ func (st *Storage) Get(ctx context.Context, author string) ([]models.ModelTodo, 
 
 	storageTask := make([]models.ModelTodo, 0)
 	sqlQuery := `
-	SELECT author,title,description,status,created_at,completed_at FROM tasks
+	SELECT id,author,title,description,status,created_at,completed_at FROM tasks
 	WHERE author = $1;
 `
 	rows, err := st.conn.Query(ctx, sqlQuery, author)
@@ -54,7 +54,8 @@ func (st *Storage) Get(ctx context.Context, author string) ([]models.ModelTodo, 
 	defer rows.Close()
 	for rows.Next() {
 		var outTask models.ModelTodo
-		if err := rows.Scan(&outTask.Author,
+		if err := rows.Scan(&outTask.Id,
+			&outTask.Author,
 			&outTask.Title,
 			&outTask.Description,
 			&outTask.Status,

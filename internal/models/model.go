@@ -3,6 +3,7 @@ package models
 import "time"
 
 type ModelTodo struct {
+	Id          int
 	Author      string
 	Title       string
 	Description string
