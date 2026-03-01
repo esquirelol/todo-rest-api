@@ -24,8 +24,8 @@ func New(taskGet TaskGet, logger *zap.Logger) http.HandlerFunc {
 
 		outTask, err := taskGet.Get(r.Context(), author)
 		if err != nil {
-			if errors.Is(err, storage.ErrTaskNotFound) {
-				logger.Info("http/get:", zap.Error(storage.ErrTaskNotFound))
+			if errors.Is(err, storage.ErrNotExists) {
+				logger.Info("http/get:", zap.Error(storage.ErrNotExists))
 				w.WriteHeader(http.StatusNotFound)
 				render.JSON(w, r, response.Error("task not found"))
 				return

@@ -21,10 +21,10 @@ func New(taskDelete TaskDelete, logger *zap.Logger) http.HandlerFunc {
 		idTask := chi.URLParam(r, "id")
 
 		if err := taskDelete.Delete(r.Context(), idTask); err != nil {
-			if errors.Is(err, storage.ErrTaskNotFound) {
-				logger.Info("http/delete: task not found")
+			if errors.Is(err, storage.ErrNotExists) {
+				logger.Info("http/delete: task not exists")
 				w.WriteHeader(http.StatusNotFound)
-				render.JSON(w, r, response.Error("task not found"))
+				render.JSON(w, r, response.Error("task not exists"))
 				return
 			}
 			logger.Error("http/delete:", zap.Error(err))

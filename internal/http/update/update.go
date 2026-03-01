@@ -27,7 +27,7 @@ func New(taskUpdate TaskUpdate, logger *zap.Logger) http.HandlerFunc {
 			return
 		}
 		if err := taskUpdate.Update(r.Context(), todo, idTask); err != nil {
-			if errors.Is(err, storage.ErrTaskNotFound) {
+			if errors.Is(err, storage.ErrNotExists) {
 				logger.Info("http/update: task dont found")
 				w.WriteHeader(http.StatusNotFound)
 				render.JSON(w, r, response.Error("task not found"))
