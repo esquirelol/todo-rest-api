@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+    healthcheck:
+      test: ["CMD-SHELL","pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  application:
+    build: .
+    container_name: application-container
+    ports:
+      - "9091:9091"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./config/config.yaml:/config/config.yaml
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+      CONFIG_PATH: ${CONFIG_PATH}
+
+volumes:
+  db-data:

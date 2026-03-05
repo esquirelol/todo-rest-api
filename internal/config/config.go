@@ -24,7 +24,7 @@ type HTTPServer struct {
 func LoadConfig() *Config {
 	cfgPath := os.Getenv("CONFIG_PATH")
 	if cfgPath == "" {
-		log.Fatal("config path if not exists")
+		log.Fatal("config path is not exists")
 	}
 	if _, err := os.Stat(cfgPath); errors.Is(err, os.ErrNotExist) {
 		log.Fatal("config file is not exists")
