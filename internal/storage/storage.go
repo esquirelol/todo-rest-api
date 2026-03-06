@@ -7,6 +7,7 @@ import (
 
 	"github.com/esquirelol/todo-rest-api/internal/dto"
 	"github.com/esquirelol/todo-rest-api/internal/models"
+	"github.com/go-redis/redis"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -40,7 +41,6 @@ func (st *Storage) Create(ctx context.Context, todo dto.Todo) error {
 }
 
 func (st *Storage) Get(ctx context.Context, author string) ([]models.ModelTodo, error) {
-
 	storageTask := make([]models.ModelTodo, 0)
 	sqlQuery := `
 	SELECT id,author,title,description,status,created_at,completed_at FROM tasks
@@ -171,4 +171,51 @@ func (st *Storage) Delete(ctx context.Context, idTask string) error {
 	}
 	st.logger.Info("task is deleted")
 	return nil
+}
+
+func (st *Storage) GetDescription(ctx context.Context, idTask string) (models.ModelDescription, error) {
+	var outModel models.ModelDescription
+	idTaskInt, err := strconv.Atoi(idTask)
+	if err != nil {
+		st.logger.Error("failed to conv", zap.Error(err))
+		return models.ModelDescription{}, err
+	}
+
+	rds, err := NewRedis()
+	if err != nil {
+		st.logger.Error("failed to connection redis", zap.Error(err))
+		return models.ModelDescription{}, err
+	}
+	val, err := rds.Get(idTask).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			st.logger.Info("key dont exists", zap.String("id-task", idTask))
+			sqlQuery := `
+		SELECT description FROM tasks
+		WHERE id = $1;
+	`
+			err = st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(&outModel.Description)
+			if err != nil {
+				if errors.Is(err, pgx.ErrNoRows) {
+					st.logger.Info("task dont exists", zap.String("id-task", idTask))
+					return models.ModelDescription{}, ErrNotExists
+				}
+				st.logger.Error("failed to scan")
+				return models.ModelDescription{}, err
+			}
+			_, err = rds.Set(idTask, outModel.Description, -1).Result()
+			if err != nil {
+				st.logger.Error("failed to set value", zap.String("id-task", idTask), zap.Error(err))
+				return models.ModelDescription{}, err
+			}
+			return outModel, nil
+		} else {
+			st.logger.Error("Redis internal error", zap.Error(err))
+			return models.ModelDescription{}, err
+		}
+
+	}
+	outModel.Description = val
+
+	return outModel, nil
 }
