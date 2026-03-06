@@ -11,3 +11,7 @@ type ModelTodo struct {
 	CreatedAt   time.Time
 	CompletedAt *time.Time
 }
+
+type ModelDescription struct {
+	Description string
+}

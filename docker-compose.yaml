@@ -15,6 +15,20 @@ services:
     ports:
       - "5432:5432"
 
+
+  redis:
+    image: redis:7-bookworm
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD","redis-cli","ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+
   application:
     build: .
     container_name: application-container
@@ -22,6 +36,8 @@ services:
       - "9091:9091"
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     volumes:
       - ./config/config.yaml:/config/config.yaml
@@ -32,6 +48,8 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_DB: ${DB_NAME}
       CONFIG_PATH: ${CONFIG_PATH}
+      REDIS_HOST: ${REDIS_HOST}
 
 volumes:
   db-data:
+  redis-data:

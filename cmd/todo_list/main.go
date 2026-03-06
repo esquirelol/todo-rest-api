@@ -8,6 +8,7 @@ import (
 	"github.com/esquirelol/todo-rest-api/internal/http/create"
 	del "github.com/esquirelol/todo-rest-api/internal/http/delete"
 	"github.com/esquirelol/todo-rest-api/internal/http/get"
+	get_description "github.com/esquirelol/todo-rest-api/internal/http/get-description"
 	"github.com/esquirelol/todo-rest-api/internal/http/update"
 	"github.com/esquirelol/todo-rest-api/internal/logger"
 	"github.com/esquirelol/todo-rest-api/internal/storage"
@@ -33,6 +34,7 @@ func main() {
 	router.Use(middleware.Timeout(cfg.Timeout))
 	router.Post("/create", create.New(&db, log))
 	router.Get("/{author}", get.New(&db, log))
+	router.Get("/getId/{id}", get_description.New(&db, log))
 	router.Patch("/{id}", update.New(&db, log))
 	router.Delete("/{id}", del.New(&db, log))
 	srv := &http.Server{
