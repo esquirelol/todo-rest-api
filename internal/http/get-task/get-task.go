@@ -1,4 +1,4 @@
-package get_description
+package get_task
 
 import (
 	"context"
@@ -13,27 +13,28 @@ import (
 	"go.uber.org/zap"
 )
 
-type TaskGetDescription interface {
-	GetDescription(ctx context.Context, idTask string) (models.ModelDescription, error)
+type GetTask interface {
+	GetId(ctx context.Context, idTask string) (models.ModelTodo, error)
 }
 
-func New(taskGD TaskGetDescription, logger *zap.Logger) http.HandlerFunc {
+func New(getTask GetTask, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var outModel models.ModelDescription
 		idTask := chi.URLParam(r, "id")
 
-		outModel, err := taskGD.GetDescription(r.Context(), idTask)
+		task, err := getTask.GetId(r.Context(), idTask)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotExists) {
 				w.WriteHeader(http.StatusNotFound)
-				render.JSON(w, r, response.OK("Task dont exists"))
+				logger.Info("task dont exists", zap.String("id-task", idTask))
+				response.OK("task dont exists")
 				return
 			}
 			w.WriteHeader(http.StatusInternalServerError)
-			render.JSON(w, r, response.Error("internal server error"))
+			logger.Error("internal server error", zap.String("id-task", idTask), zap.Error(err))
+			response.Error("internal sever error")
 			return
-
 		}
-		render.JSON(w, r, outModel)
+		render.JSON(w, r, task)
+		logger.Info("get task is success")
 	}
 }

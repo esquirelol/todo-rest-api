@@ -7,7 +7,6 @@ import (
 
 	"github.com/esquirelol/todo-rest-api/internal/dto"
 	"github.com/esquirelol/todo-rest-api/internal/models"
-	"github.com/go-redis/redis"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
 )
@@ -81,23 +80,55 @@ func (st *Storage) GetId(ctx context.Context, idTask string) (models.ModelTodo, 
 	outTask := models.ModelTodo{}
 	idTaskInt, err := strconv.Atoi(idTask)
 	if err != nil {
-		st.logger.Error("failed to conv id", zap.Error(err))
+		st.logger.Error("failed to conv id", zap.String("id-task", idTask), zap.Error(err))
 		return outTask, err
 	}
-	sqlQuery := `
-	SELECT author,title,description,status FROM tasks
-	WHERE id = $1
-`
-	if err := st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(
-		&outTask.Author,
-		&outTask.Title,
-		&outTask.Description,
-		&outTask.Status,
-	); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return outTask, ErrNotExists
+	rds, err := NewRedis()
+	if err != nil {
+		st.logger.Error("failed to connect redis")
+		return models.ModelTodo{}, err
+	}
+
+	task, err := rds.HGetAll(idTask).Result()
+
+	if err == nil && len(task) == 0 {
+
+		sqlQuery := `
+			SELECT author,title,description,status FROM tasks
+			WHERE id = $1
+			`
+		if err := st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(
+			&outTask.Author,
+			&outTask.Title,
+			&outTask.Description,
+			&outTask.Status,
+		); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return outTask, ErrNotExists
+			}
+			return outTask, err
 		}
-		return outTask, err
+		rds.HSet(idTask, "author", outTask.Author)
+		rds.HSet(idTask, "title", outTask.Title)
+		rds.HSet(idTask, "description", outTask.Description)
+		rds.HSet(idTask, "status", outTask.Status)
+		return outTask, nil
+
+	}
+	if err != nil {
+		st.logger.Info("internal error redis", zap.Error(err))
+		return models.ModelTodo{}, err
+	}
+	statusBool, err := strconv.ParseBool(task["status"])
+	if err != nil {
+		st.logger.Error("failed to parse", zap.String("id-task", idTask))
+		return models.ModelTodo{}, err
+	}
+	outTask = models.ModelTodo{
+		Author:      task["author"],
+		Title:       task["title"],
+		Description: task["description"],
+		Status:      statusBool,
 	}
 	return outTask, nil
 }
@@ -171,51 +202,4 @@ func (st *Storage) Delete(ctx context.Context, idTask string) error {
 	}
 	st.logger.Info("task is deleted")
 	return nil
-}
-
-func (st *Storage) GetDescription(ctx context.Context, idTask string) (models.ModelDescription, error) {
-	var outModel models.ModelDescription
-	idTaskInt, err := strconv.Atoi(idTask)
-	if err != nil {
-		st.logger.Error("failed to conv", zap.Error(err))
-		return models.ModelDescription{}, err
-	}
-
-	rds, err := NewRedis()
-	if err != nil {
-		st.logger.Error("failed to connection redis", zap.Error(err))
-		return models.ModelDescription{}, err
-	}
-	val, err := rds.Get(idTask).Result()
-	if err != nil {
-		if errors.Is(err, redis.Nil) {
-			st.logger.Info("key dont exists", zap.String("id-task", idTask))
-			sqlQuery := `
-		SELECT description FROM tasks
-		WHERE id = $1;
-	`
-			err = st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(&outModel.Description)
-			if err != nil {
-				if errors.Is(err, pgx.ErrNoRows) {
-					st.logger.Info("task dont exists", zap.String("id-task", idTask))
-					return models.ModelDescription{}, ErrNotExists
-				}
-				st.logger.Error("failed to scan")
-				return models.ModelDescription{}, err
-			}
-			_, err = rds.Set(idTask, outModel.Description, -1).Result()
-			if err != nil {
-				st.logger.Error("failed to set value", zap.String("id-task", idTask), zap.Error(err))
-				return models.ModelDescription{}, err
-			}
-			return outModel, nil
-		} else {
-			st.logger.Error("Redis internal error", zap.Error(err))
-			return models.ModelDescription{}, err
-		}
-
-	}
-	outModel.Description = val
-
-	return outModel, nil
 }
