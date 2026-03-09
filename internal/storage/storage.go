@@ -28,24 +28,44 @@ func ConnectionStorage(ctx context.Context, pathStorage string, logger *zap.Logg
 
 func (st *Storage) Create(ctx context.Context, todo dto.Todo) error {
 	sqlQuery := `
-	INSERT INTO tasks("author","title","description")
-	VALUES ($1,$2,$3);
+	INSERT INTO users(name)
+	VALUES($1)
 `
-	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title, todo.Description); err != nil {
+	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author); err != nil {
+		st.logger.Error("failed to create user", zap.Error(err))
+		return err
+	}
+
+	sqlQuery = `
+	INSERT INTO tasks (user_id, title, description, status)
+	SELECT id, $2, $3, $4 
+	FROM users 
+	WHERE name = $1;;
+`
+	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title, todo.Description, todo.Status); err != nil {
 		st.logger.Error("failed to create task", zap.Error(err))
 		return err
 	}
+
 	st.logger.Info("created task success", zap.String("author:", todo.Author))
 	return nil
 }
 
-func (st *Storage) Get(ctx context.Context, author string) ([]models.ModelTodo, error) {
+func (st *Storage) Get(ctx context.Context, idAuthor string) ([]models.ModelTodo, error) {
 	storageTask := make([]models.ModelTodo, 0)
+	idAuthorInt, err := strconv.Atoi(idAuthor)
+	if err != nil {
+		st.logger.Error("failed to parce id", zap.String("id_author", idAuthor))
+		return nil, err
+	}
+
 	sqlQuery := `
-	SELECT id,author,title,description,status,created_at,completed_at FROM tasks
-	WHERE author = $1;
+	SELECT t.id,u.name,t.title,t.description,t.status,t.created_at,t.completed_at 
+	FROM users u JOIN tasks t 
+	ON u.id = t.user_id
+	WHERE u.id = $1
 `
-	rows, err := st.conn.Query(ctx, sqlQuery, author)
+	rows, err := st.conn.Query(ctx, sqlQuery, idAuthorInt)
 	if err != nil {
 		st.logger.Error("failed to select task", zap.Error(err))
 		return nil, err
@@ -94,8 +114,9 @@ func (st *Storage) GetId(ctx context.Context, idTask string) (models.ModelTodo, 
 	if err == nil && len(task) == 0 {
 
 		sqlQuery := `
-			SELECT author,title,description,status FROM tasks
-			WHERE id = $1
+			SELECT u.name,t.title,t.description,t.status FROM tasks t JOIN users u 
+			ON u.id = t.user_id
+			WHERE u.id = $1
 			`
 		if err := st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(
 			&outTask.Author,
