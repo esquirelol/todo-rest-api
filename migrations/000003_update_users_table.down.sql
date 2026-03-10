@@ -1,0 +1,4 @@
+ALTER TABLE users DROP COLUMN age;
+ALTER TABLE users DROP COLUMN user_name;
+ALTER TABLE users DROP COLUMN password_hash;
+ALTER TABLE users ADD COLUMN name TEXT;

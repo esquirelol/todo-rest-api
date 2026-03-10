@@ -9,6 +9,7 @@ import (
 	"github.com/esquirelol/todo-rest-api/internal/models"
 	"github.com/jackc/pgx/v5"
 	"go.uber.org/zap"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Storage struct {
@@ -26,23 +27,36 @@ func ConnectionStorage(ctx context.Context, pathStorage string, logger *zap.Logg
 	return storage, nil
 }
 
-func (st *Storage) Create(ctx context.Context, todo dto.Todo) error {
+func (st *Storage) CreateUser(ctx context.Context, userName, password string) (int, error) {
+
 	sqlQuery := `
-	INSERT INTO users(name)
-	VALUES($1)
+	INSERT INTO users(user_name,password_hash)
+	VALUES($1,$2)
+	RETURNING id;
 `
-	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author); err != nil {
-		st.logger.Error("failed to create user", zap.Error(err))
-		return err
+	var idUser int
+	pass, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	if err != nil {
+		st.logger.Error("failed to generate hash", zap.String("user_name", userName))
+		return idUser, err
 	}
 
-	sqlQuery = `
+	if err = st.conn.QueryRow(ctx, sqlQuery, userName, pass).Scan(&idUser); err != nil {
+		st.logger.Error("failed to create user", zap.String("user_name", userName))
+		return idUser, err
+	}
+
+	st.logger.Info("create user success", zap.String("user_name", userName))
+	return idUser, nil
+
+}
+
+func (st *Storage) Create(ctx context.Context, todo dto.Todo) error {
+	sqlQuery := `
 	INSERT INTO tasks (user_id, title, description, status)
-	SELECT id, $2, $3, $4 
-	FROM users 
-	WHERE name = $1;;
+	VALUES($1,$2,$3,$4)
 `
-	if _, err := st.conn.Exec(ctx, sqlQuery, todo.Author, todo.Title, todo.Description, todo.Status); err != nil {
+	if _, err := st.conn.Exec(ctx, sqlQuery, todo.UserId, todo.Title, todo.Description, todo.Status); err != nil {
 		st.logger.Error("failed to create task", zap.Error(err))
 		return err
 	}
@@ -51,21 +65,16 @@ func (st *Storage) Create(ctx context.Context, todo dto.Todo) error {
 	return nil
 }
 
-func (st *Storage) Get(ctx context.Context, idAuthor string) ([]models.ModelTodo, error) {
+func (st *Storage) Get(ctx context.Context, author string, idAuthor int) ([]models.ModelTodo, error) {
 	storageTask := make([]models.ModelTodo, 0)
-	idAuthorInt, err := strconv.Atoi(idAuthor)
-	if err != nil {
-		st.logger.Error("failed to parce id", zap.String("id_author", idAuthor))
-		return nil, err
-	}
 
 	sqlQuery := `
-	SELECT t.id,u.name,t.title,t.description,t.status,t.created_at,t.completed_at 
+	SELECT t.id,u.user_name,t.title,t.description,t.status,t.created_at,t.completed_at 
 	FROM users u JOIN tasks t 
 	ON u.id = t.user_id
-	WHERE u.id = $1
+	WHERE u.id = $1 AND u.user_name = $2
 `
-	rows, err := st.conn.Query(ctx, sqlQuery, idAuthorInt)
+	rows, err := st.conn.Query(ctx, sqlQuery, idAuthor, author)
 	if err != nil {
 		st.logger.Error("failed to select task", zap.Error(err))
 		return nil, err
@@ -114,11 +123,12 @@ func (st *Storage) GetId(ctx context.Context, idTask string) (models.ModelTodo, 
 	if err == nil && len(task) == 0 {
 
 		sqlQuery := `
-			SELECT u.name,t.title,t.description,t.status FROM tasks t JOIN users u 
+			SELECT t.id,u.user_name,t.title,t.description,t.status FROM tasks t JOIN users u 
 			ON u.id = t.user_id
 			WHERE u.id = $1
 			`
 		if err := st.conn.QueryRow(ctx, sqlQuery, idTaskInt).Scan(
+			&outTask.Id,
 			&outTask.Author,
 			&outTask.Title,
 			&outTask.Description,
@@ -129,6 +139,7 @@ func (st *Storage) GetId(ctx context.Context, idTask string) (models.ModelTodo, 
 			}
 			return outTask, err
 		}
+		rds.HSet(idTask, "id_task", outTask.Id)
 		rds.HSet(idTask, "author", outTask.Author)
 		rds.HSet(idTask, "title", outTask.Title)
 		rds.HSet(idTask, "description", outTask.Description)
@@ -146,6 +157,7 @@ func (st *Storage) GetId(ctx context.Context, idTask string) (models.ModelTodo, 
 		return models.ModelTodo{}, err
 	}
 	outTask = models.ModelTodo{
+		Id:          idTaskInt,
 		Author:      task["author"],
 		Title:       task["title"],
 		Description: task["description"],
@@ -169,10 +181,6 @@ func (st *Storage) Update(ctx context.Context, todo dto.TodoUpdate, idTask strin
 		st.logger.Error("failed to conv id", zap.Error(err))
 		return err
 	}
-	author := task.Author
-	if todo.Author != nil {
-		author = *todo.Author
-	}
 	title := task.Title
 	if todo.Title != nil {
 		title = *todo.Title
@@ -186,10 +194,10 @@ func (st *Storage) Update(ctx context.Context, todo dto.TodoUpdate, idTask strin
 		status = *todo.Status
 	}
 	sqlQuery := `
-	UPDATE tasks SET author = $1,title = $2, description = $3,status = $4
-	WHERE id = $5;
+	UPDATE tasks SET title = $1, description = $2,status = $3
+	WHERE id = $4;
 `
-	res, err := st.conn.Exec(ctx, sqlQuery, author, title, description, status, idTaskInt)
+	res, err := st.conn.Exec(ctx, sqlQuery, title, description, status, idTaskInt)
 	if err != nil {
 		st.logger.Error("failed to update task", zap.Error(err))
 		return err

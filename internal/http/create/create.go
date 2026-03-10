@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/esquirelol/todo-rest-api/internal/auth"
 	"github.com/esquirelol/todo-rest-api/internal/dto"
 
 	"github.com/esquirelol/todo-rest-api/internal/http/api/response"
@@ -17,7 +18,16 @@ type TaskCreate interface {
 
 func New(taskCr TaskCreate, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		authHeader := r.Header.Get("Authorization")
+		tokenString := authHeader[7:]
+		userId, err := auth.ParseToken(tokenString)
+		if err != nil {
+			logger.Error("failed to parse token", zap.Error(err))
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		var task dto.Todo
+		task.UserId = userId
 		if err := render.DecodeJSON(r.Body, &task); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			logger.Error("failed to create task")

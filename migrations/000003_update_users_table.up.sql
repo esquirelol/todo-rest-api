@@ -1,0 +1,5 @@
+ALTER TABLE users DROP COLUMN name;
+ALTER TABLE users ADD COLUMN user_name TEXT NOT NULL DEFAULT 'noname';
+ALTER TABLE users ADD COLUMN password_hash TEXT;
+ALTER TABLE users ADD COLUMN age INT;
+

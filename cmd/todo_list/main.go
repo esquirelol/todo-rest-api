@@ -6,6 +6,7 @@ import (
 
 	"github.com/esquirelol/todo-rest-api/internal/config"
 	"github.com/esquirelol/todo-rest-api/internal/http/create"
+	create_user "github.com/esquirelol/todo-rest-api/internal/http/create-user"
 	del "github.com/esquirelol/todo-rest-api/internal/http/delete"
 	"github.com/esquirelol/todo-rest-api/internal/http/get"
 	get_task "github.com/esquirelol/todo-rest-api/internal/http/get-task"
@@ -32,6 +33,7 @@ func main() {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Timeout(cfg.Timeout))
+	router.Post("/createUser", create_user.New(&db, log))
 	router.Post("/create", create.New(&db, log))
 	router.Get("/{author}", get.New(&db, log))
 	router.Get("/getTask/{id}", get_task.New(&db, log))
