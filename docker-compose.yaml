@@ -49,6 +49,7 @@ services:
       POSTGRES_DB: ${DB_NAME}
       CONFIG_PATH: ${CONFIG_PATH}
       REDIS_HOST: ${REDIS_HOST}
+      SECRET_KEY: ${SECRET_KEY}
 
 volumes:
   db-data:

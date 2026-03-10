@@ -3,14 +3,16 @@ package dto
 import "time"
 
 type TodoUpdate struct {
-	Author      *string `json:"author,omitempty"`
+	Author      *string `json:"author"`
+	UserId      int
 	Title       *string `json:"title,omitempty"`
 	Description *string `json:"description,omitempty"`
 	Status      *bool   `json:"status,omitempty" `
 }
 
 type Todo struct {
-	Author      string     `json:"author"`
+	Author      string `json:"author"`
+	UserId      int
 	Title       string     `json:"title"`
 	Description string     `json:"description"`
 	Status      bool       `json:"status"`

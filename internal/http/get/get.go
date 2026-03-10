@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/esquirelol/todo-rest-api/internal/auth"
 	"github.com/esquirelol/todo-rest-api/internal/http/api/response"
 	"github.com/esquirelol/todo-rest-api/internal/models"
 	"github.com/esquirelol/todo-rest-api/internal/storage"
@@ -14,15 +15,23 @@ import (
 )
 
 type TaskGet interface {
-	Get(ctx context.Context, author string) ([]models.ModelTodo, error)
+	Get(ctx context.Context, author string, userId int) ([]models.ModelTodo, error)
 }
 
 func New(taskGet TaskGet, logger *zap.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var outTask []models.ModelTodo
 		author := chi.URLParam(r, "author")
+		authHeader := r.Header.Get("Authorization")
+		tokenString := authHeader[7:]
+		userId, err := auth.ParseToken(tokenString)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			render.JSON(w, r, response.Error("internal server error"))
+			return
+		}
 
-		outTask, err := taskGet.Get(r.Context(), author)
+		outTask, err = taskGet.Get(r.Context(), author, userId)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotExists) {
 				logger.Info("http/get:", zap.Error(storage.ErrNotExists))
